@@ -7,21 +7,17 @@ from comp import TimeSeriesAnalyzer
 from utility import prepare_data,format_results
 
 st.title('Automated Time Series Forecasting')
-st.write("## We are experimenting with 3 models namely: LSTM, GRU, and CNN")
+st.write("## We are experimenting with 3 models: LSTM, GRU, and CNN")
 
+uploaded_files = st.file_uploader("Choose a CSV file", type="csv", accept_multiple_files=True)
 
-# get a csv as input 
-uploaded_files = st.file_uploader("Choose a CSV file", type="csv",accept_multiple_files=True)
-if uploaded_files :
-
+if uploaded_files:
     all_results = []
 
     for uploaded_file in uploaded_files:
-        
-        result = []
-        result.append(uploaded_file.name)
-
+        result = [uploaded_file.name]
         df = pd.read_csv(uploaded_file)
+
         st.write("# Original Data")
         st.write(df)
 
@@ -30,15 +26,12 @@ if uploaded_files :
         # Prepare data
         date_column = df.columns[0]
         target_column = df.columns[1]
-
         prepared_data = prepare_data(df, date_column, target_column)
-        
+
         # Analyze time series characteristics
         analyzer = TimeSeriesAnalyzer(prepared_data, target_column)
         characteristics = analyzer.analyze()
-        st.write(characteristics)
 
-        # Extract key results
         char_results = {
             "Stationarity": characteristics["stationarity"]["is_stationary"],
             "Seasonality": characteristics["seasonality"]["is_seasonal"],
@@ -46,40 +39,54 @@ if uploaded_files :
             "Volatility": characteristics["volatility"]["high_volatility"]
         }
 
-        # Convert to DataFrame for tabular representation
-        df_results = pd.DataFrame(list(char_results.items()), columns=["Feature", "Result"])
-
-        df_results["Result"] = df_results["Result"].apply(
-            lambda x: "✅" if str(x).lower() == "true" else "❌"
-        )
-
         for values in char_results.values():
-             result.append(values)
-
-        # Display styled dataframe in Streamlit
-        st.dataframe(df_results.style.set_table_styles(
-            [{"selector": "th", "props": [("font-size", "16px"), ("text-align", "center")]}]
-        ))
+            result.append(values)
 
         st.write("# Forecasting data")
         data = df[df.columns[1]]
 
         st.write("## LSTM Model")
-        metrics = single_LSTM(data)
-        result.extend(metrics)
+        lstm_metrics = single_LSTM(data)
+        result.extend(lstm_metrics)
 
         st.write("## GRU Model")
-        metrics = single_GRU(data)
-        result.extend(metrics)
+        gru_metrics = single_GRU(data)
+        result.extend(gru_metrics)
 
         st.write("## CNN Model")
-        metrics = single_CNN(data)
-        result.extend(metrics)
+        cnn_metrics = single_CNN(data)
+        result.extend(cnn_metrics)
+
+        # Assign points to determine the best model
+        models = {"LSTM": lstm_metrics, "GRU": gru_metrics, "CNN": cnn_metrics}
+        points = {"LSTM": 0, "GRU": 0, "CNN": 0}
+
+        # Best model per metric
+        for metric_idx in range(4):  # 4 metrics (MAE, MAPE, RMSE, R2)
+            metric_values = {model: metrics[metric_idx] for model, metrics in models.items()}
+
+            if metric_idx == 3:  # R² (higher is better)
+                best_model = max(metric_values, key=metric_values.get)
+            else:  # MAE, MAPE, RMSE (lower is better)
+                best_model = min(metric_values, key=metric_values.get)
+
+            points[best_model] += 1
+
+        # Select model with the highest points
+        best_model = max(points, key=points.get)
+        result.append(best_model)
 
         all_results.append(result)
 
+    # Create a DataFrame with a "Best Model" column
+    columns = ["File", "Stationarity", "Seasonality", "Trend", "Volatility",
+               "LSTM MAE", "LSTM MAPE", "LSTM RMSE", "LSTM R2",
+               "GRU MAE", "GRU MAPE", "GRU RMSE", "GRU R2",
+               "CNN MAE", "CNN MAPE", "CNN RMSE", "CNN R2", "Best Model"]
+
+    df_all_results = pd.DataFrame(all_results, columns=columns)
+
     st.write("# Summary of all results")
-    df_all_results = pd.DataFrame(all_results, columns=["File", "Stationarity", "Seasonality", "Trend", "Volatility", "LSTM MAE", "LSTM MAPE", "LSTM RMSE", "LSTM R2", "GRU MAE", "GRU MAPE", "GRU RMSE", "GRU R2", "CNN MAE", "CNN MAPE", "CNN RMSE", "CNN R2"])
     st.dataframe(df_all_results.style.set_table_styles(
         [{"selector": "th", "props": [("font-size", "16px"), ("text-align", "center")]}]
     ))
@@ -94,10 +101,9 @@ if uploaded_files :
     )
 
     st.write("# Formatted Summary of all results")
-    format_results  = format_results(all_results)
+    format_results = format_results(all_results)
     for key in format_results.keys():
         st.write(key)
         st.dataframe(format_results[key].style.set_table_styles(
             [{"selector": "th", "props": [("font-size", "16px"), ("text-align", "center")]}]
         ))
-
